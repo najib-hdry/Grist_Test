@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban — Tâches</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --col-ToPlan:  #7F77DD;
+  --col-ToDo:    #f95c5e;
+  --col-Doing:   #417DC4;
+  --col-Done:    #27a658;
+  --col-Blocked: #888780;
+  --font: 'Segoe UI', system-ui, sans-serif;
+}
+body {
+  font-family: var(--font);
+  background: #f0ede8;
+  min-height: 100vh;
+  padding: 10px;
+  color: #2c2c2a;
+}
+
+/* ONGLETS */
+#tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.tab {
+  padding: 5px 13px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 2px solid currentColor;
+  background: #fff;
+  transition: all 0.15s;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.tab-count {
+  background: rgba(0,0,0,0.1);
+  border-radius: 10px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+.tab[data-col="all"]     { color: #2c2c2a; }
+.tab[data-col="ToPlan"]  { color: var(--col-ToPlan); }
+.tab[data-col="ToDo"]    { color: var(--col-ToDo); }
+.tab[data-col="Doing"]   { color: var(--col-Doing); }
+.tab[data-col="Done"]    { color: var(--col-Done); }
+.tab[data-col="Blocked"] { color: var(--col-Blocked); }
+
+.tab.active { color: #fff !important; border-color: transparent; }
+.tab[data-col="all"].active     { background: #2c2c2a; }
+.tab[data-col="ToPlan"].active  { background: var(--col-ToPlan); }
+.tab[data-col="ToDo"].active    { background: var(--col-ToDo); }
+.tab[data-col="Doing"].active   { background: var(--col-Doing); }
+.tab[data-col="Done"].active    { background: var(--col-Done); }
+.tab[data-col="Blocked"].active { background: var(--col-Blocked); }
+.tab.active .tab-count { background: rgba(255,255,255,0.3); }
+
+/* TOOLBAR */
+#toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+#toolbar input[type="text"] {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2c2a;
+  width: 180px;
+  outline: none;
+}
+#toolbar input:focus { border-color: #7F77DD; }
+#toolbar select {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 13px;
+  background: #fff;
+  color: #2c2c2a;
+  outline: none;
+}
+#stats { font-size: 12px; color: #888780; margin-left: auto; }
+
+/* BOARD */
+#board {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.column {
+  flex: 0 0 220px;
+  min-width: 220px;
+  background: #fff;
+  border-radius: 10px;
+  border: 0.5px solid rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 130px);
+}
+.column.hidden { display: none; }
+
+.col-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+  background: #fff;
+  border-radius: 10px 10px 0 0;
+  border-top: 3px solid transparent;
+}
+.column[data-col="ToPlan"]  .col-header { border-top-color: var(--col-ToPlan); }
+.column[data-col="ToDo"]    .col-header { border-top-color: var(--col-ToDo); }
+.column[data-col="Doing"]   .col-header { border-top-color: var(--col-Doing); }
+.column[data-col="Done"]    .col-header { border-top-color: var(--col-Done); }
+.column[data-col="Blocked"] .col-header { border-top-color: var(--col-Blocked); }
+
+.col-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.col-title { font-size: 13px; font-weight: 600; flex: 1; }
+.col-count { font-size: 11px; background: #f0ede8; color: #5f5e5a; border-radius: 10px; padding: 1px 7px; font-weight: 500; }
+
+.col-body {
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* CARTES */
+.card {
+  background: #fafaf8;
+  border: 0.5px solid rgba(0,0,0,0.1);
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+.card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.card.selected { box-shadow: 0 0 0 2px #7F77DD; }
+
+.column[data-col="ToPlan"]  .card { border-left-color: var(--col-ToPlan); }
+.column[data-col="ToDo"]    .card { border-left-color: var(--col-ToDo); }
+.column[data-col="Doing"]   .card { border-left-color: var(--col-Doing); }
+.column[data-col="Done"]    .card { border-left-color: var(--col-Done); }
+.column[data-col="Blocked"] .card { border-left-color: var(--col-Blocked); }
+
+.card-title { font-size: 13px; font-weight: 500; color: #2c2c2a; line-height: 1.35; margin-bottom: 5px; word-break: break-word; }
+.card-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+
+.badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 500; white-space: nowrap; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.badge-projet  { background: #E6F1FB; color: #0C447C; }
+.badge-assigne { background: #EEEDFE; color: #3C3489; }
+.badge-charge  { background: #FAEEDA; color: #633806; }
+.badge-due     { background: #FCEBEB; color: #791F1F; }
+.badge-due.ok  { background: #EAF3DE; color: #27500A; }
+.badge-due.warn{ background: #FAEEDA; color: #633806; }
+
+.card-link { display: block; margin-top: 5px; font-size: 11px; color: #185FA5; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-link:hover { text-decoration: underline; }
+.empty-col { font-size: 12px; color: #b4b2a9; text-align: center; padding: 16px 0; }
+
+.card-actions { display: none; position: absolute; top: 5px; right: 5px; gap: 3px; }
+.card:hover .card-actions { display: flex; }
+.btn-move { background: rgba(255,255,255,0.95); border: 0.5px solid #ccc; border-radius: 4px; padding: 2px 5px; font-size: 10px; cursor: pointer; color: #444; line-height: 1.4; }
+.btn-move:hover { background: #f0ede8; }
+.drag-over { background: #eeeaf5 !important; }
+.loading { display:flex; align-items:center; justify-content:center; height:200px; font-size:14px; color:#888; }
+
+
+</style>
+</head>
+<body>
+
+<div id="tabs"></div>
+<div id="toolbar">
+  <input type="text" id="search" placeholder="🔍 Rechercher…">
+  <select id="filter-projet"><option value="">Tous les projets</option></select>
+  <select id="filter-assigne"><option value="">Tous</option></select>
+  <span id="stats"></span>
+</div>
+<div id="board"><div class="loading">Chargement…</div></div>
+
+<script>
+const COLUMNS = [
+  { id: "ToPlan",  label: "📋 ToPlan",  color: "#7F77DD" },
+  { id: "ToDo",    label: "🖐️ ToDo",   color: "#f95c5e" },
+  { id: "Doing",   label: "♻️ Doing",  color: "#417DC4" },
+  { id: "Done",    label: "✅ Done",    color: "#27a658" },
+  { id: "Blocked", label: "🚫 Blocked", color: "#888780" },
+];
+
+let allRecords = [];
+let selectedId = null;
+let activeTab  = "all";
+
+/* ── utilitaires ── */
+function esc(s) {
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function resolveRefList(val) {
+  /* Grist envoie les RefList soit comme ["L",1,2,3] soit comme tableau d'IDs
+     Les labels sont dans les colonnes gristHelper_Display*.
+     On accepte aussi les strings directes. */
+  if (!val) return [];
+  if (typeof val === "string") return val.split(",").map(s=>s.trim()).filter(Boolean);
+  if (Array.isArray(val)) {
+    /* format Grist ["L", id1, id2, ...] */
+    const items = val[0] === "L" ? val.slice(1) : val;
+    return items.map(String).filter(Boolean);
+  }
+  return [String(val)];
+}
+
+function formatDate(raw) {
+  if (!raw) return null;
+  const d = typeof raw === "number" ? new Date(raw * 1000) : new Date(raw);
+  return isNaN(d) ? null : d.toLocaleDateString("fr-FR",{day:"2-digit",month:"2-digit",year:"2-digit"});
+}
+
+function dateClass(raw) {
+  if (!raw) return "ok";
+  const d = typeof raw === "number" ? new Date(raw * 1000) : new Date(raw);
+  if (isNaN(d)) return "ok";
+  const diff = (d - Date.now()) / 86400000;
+  if (diff < 0) return "";
+  if (diff < 3) return "warn";
+  return "ok";
+}
+
+/* ── Onglets ── */
+function renderTabs(groups) {
+  const el = document.getElementById("tabs");
+  el.innerHTML = "";
+  const total = Object.values(groups).reduce((s,a)=>s+a.length,0);
+
+  const makeTab = (colId, label) => {
+    const t = document.createElement("div");
+    t.className = "tab" + (activeTab === colId ? " active" : "");
+    t.dataset.col = colId;
+    const count = colId === "all" ? total : (groups[colId]?.length ?? 0);
+    t.innerHTML = `${label} <span class="tab-count">${count}</span>`;
+    t.addEventListener("click", () => { activeTab = colId; renderBoard(); });
+    el.appendChild(t);
+  };
+
+  makeTab("all", "🗂 Toutes");
+  COLUMNS.forEach(c => makeTab(c.id, c.label));
+}
+
+/* ── Board ── */
+function renderBoard() {
+  const search = document.getElementById("search").value.toLowerCase();
+  const fpj    = document.getElementById("filter-projet").value;
+  const fass   = document.getElementById("filter-assigne").value;
+
+  const filtered = allRecords.filter(r => {
+    if (fpj  && !r._projets.includes(fpj))   return false;
+    if (fass && !r._assignes.includes(fass)) return false;
+    if (search && !String(r.Tache||"").toLowerCase().includes(search)
+               && !r._projets.join(" ").toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const groups = {};
+  COLUMNS.forEach(c => { groups[c.id] = []; });
+  filtered.forEach(r => {
+    const colId = COLUMNS.find(c => c.id === r.Etat) ? r.Etat : "ToPlan";
+    groups[colId].push(r);
+  });
+
+  document.getElementById("stats").textContent =
+    `${filtered.length} tâche${filtered.length>1?"s":""}`;
+
+  renderTabs(groups);
+
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+
+  COLUMNS.forEach(col => {
+    if (activeTab !== "all" && activeTab !== col.id) return;
+
+    const cards = groups[col.id];
+    const colEl = document.createElement("div");
+    colEl.className = "column";
+    colEl.dataset.col = col.id;
+
+    colEl.addEventListener("dragover",  e => { e.preventDefault(); colEl.classList.add("drag-over"); });
+    colEl.addEventListener("dragleave", ()=> colEl.classList.remove("drag-over"));
+    colEl.addEventListener("drop", e => {
+      e.preventDefault();
+      colEl.classList.remove("drag-over");
+      moveCard(parseInt(e.dataTransfer.getData("text/plain")), col.id);
+    });
+
+    const hdr = document.createElement("div");
+    hdr.className = "col-header";
+    hdr.innerHTML = `
+      <span class="col-dot" style="background:${col.color}"></span>
+      <span class="col-title">${col.label}</span>
+      <span class="col-count">${cards.length}</span>`;
+    colEl.appendChild(hdr);
+
+    const body = document.createElement("div");
+    body.className = "col-body";
+
+    if (!cards.length) {
+      body.innerHTML = `<div class="empty-col">Aucune tâche</div>`;
+    } else {
+      cards.forEach(r => {
+        const card = document.createElement("div");
+        card.className = "card" + (r.id === selectedId ? " selected" : "");
+        card.dataset.id = r.id;
+        card.draggable = true;
+        card.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", r.id));
+
+        const idx    = COLUMNS.findIndex(c => c.id === col.id);
+        const prevId = COLUMNS[idx-1]?.id;
+        const nextId = COLUMNS[idx+1]?.id;
+        const dueStr = formatDate(r.Due_Date);
+        const dCls   = dateClass(r.Due_Date);
+
+        card.innerHTML = `
+          <div class="card-actions">
+            ${prevId ? `<button class="btn-move" data-to="${prevId}" data-id="${r.id}">◀</button>` : ""}
+            ${nextId ? `<button class="btn-move" data-to="${nextId}" data-id="${r.id}">▶</button>` : ""}
+          </div>
+          <div class="card-title">${esc(r.Tache) || "<em>Sans titre</em>"}</div>
+          <div class="card-meta">
+            ${r._projets.map(p=>`<span class="badge badge-projet" title="${esc(p)}">${esc(p)}</span>`).join("")}
+            ${r._assignes.map(a=>`<span class="badge badge-assigne" title="${esc(a)}">${esc(a)}</span>`).join("")}
+            ${r.Charge  ? `<span class="badge badge-charge">${r.Charge}j</span>` : ""}
+            ${dueStr    ? `<span class="badge badge-due ${dCls}">📅 ${dueStr}</span>` : ""}
+          </div>
+          ${r.Lien_carte ? `<a class="card-link" href="${esc(r.Lien_carte)}" target="_blank">🔗 ${esc(r.Lien_carte).replace(/^https?:\/\//,"").substring(0,38)}</a>` : ""}
+        `;
+
+        /* clic sur la carte → sélectionne la ligne dans Grist
+           setSelectedRows() permet à une vue Fiche liée de se mettre à jour */
+        card.addEventListener("click", () => selectCard(r.id));
+
+        card.querySelectorAll(".btn-move").forEach(btn => {
+          btn.addEventListener("click", e => {
+            e.stopPropagation();
+            moveCard(parseInt(btn.dataset.id), btn.dataset.to);
+          });
+        });
+
+        body.appendChild(card);
+      });
+    }
+    colEl.appendChild(body);
+    board.appendChild(colEl);
+  });
+}
+
+/* ── Sélectionner une carte → notifie Grist (permet le lien avec vue Fiche) ── */
+function selectCard(id) {
+  selectedId = id;
+  /* setCursorPos : positionne le curseur dans la table source */
+  grist.setCursorPos({ rowId: id }).catch(()=>{});
+  /* setSelectedRows : permet à une vue liée (Fiche) de filtrer sur cette ligne */
+  if (typeof grist.setSelectedRows === "function") {
+    grist.setSelectedRows([id]);
+  }
+  renderBoard();
+}
+
+/* ── Déplacer une carte → met à jour Etat dans Grist ── */
+function moveCard(id, toColId) {
+  /* toColId EST la valeur exacte du Choice Grist : ToPlan, ToDo, Doing, Done, Blocked */
+  grist.docApi.applyUserActions([
+    ["UpdateRecord", "Taches", id, { Etat: toColId }]
+  ]).then(() => {
+    const rec = allRecords.find(r => r.id === id);
+    if (rec) {
+      rec.Etat = toColId;
+      if (activeTab !== "all") activeTab = toColId;
+    }
+    renderBoard();
+  }).catch(err => console.warn("Update failed:", err));
+}
+
+/* ── Filtres ── */
+function populateFilters() {
+  const projets  = [...new Set(allRecords.flatMap(r => r._projets))].filter(Boolean).sort();
+  const assignes = [...new Set(allRecords.flatMap(r => r._assignes))].filter(Boolean).sort();
+
+  const fpj = document.getElementById("filter-projet");
+  const pjVal = fpj.value;
+  fpj.innerHTML = `<option value="">Tous les projets</option>`;
+  projets.forEach(p => fpj.innerHTML += `<option value="${esc(p)}"${pjVal===p?" selected":""}>${esc(p)}</option>`);
+
+  const fass = document.getElementById("filter-assigne");
+  const assVal = fass.value;
+  fass.innerHTML = `<option value="">Tous</option>`;
+  assignes.forEach(a => fass.innerHTML += `<option value="${esc(a)}"${assVal===a?" selected":""}>${esc(a)}</option>`);
+}
+
+document.getElementById("search").addEventListener("input", renderBoard);
+document.getElementById("filter-projet").addEventListener("change", renderBoard);
+document.getElementById("filter-assigne").addEventListener("change", renderBoard);
+
+/* ── Grist ── */
+grist.ready({
+  requiredAccess: "full",
+  columns: [
+    { name: "Tache",      title: "Tâche",      type: "Text"    },
+    { name: "Assigne",    title: "Assigné",     type: "Any"     },
+    { name: "Charge",     title: "Charge",      type: "Numeric" },
+    { name: "Projet",     title: "Projet",      type: "Any"     },
+    { name: "Etat",       title: "État",        type: "Choice"  },
+    { name: "Lien_carte", title: "Lien carte",  type: "Text"    },
+    { name: "Due_Date",   title: "Due Date",    type: "Date"    },
+  ]
+});
+
+grist.onRecords(function(records, mappings) {
+  /* mapColumnNames traduit les noms internes → noms déclarés dans columns[] */
+  const mapped = grist.mapColumnNames(records, mappings) || records;
+
+  allRecords = mapped.map(r => {
+    /* Projet et Assigne sont des RefList.
+       Grist injecte les colonnes display sous forme de tableau de strings
+       dans les champs mappés quand le type est Any.
+       On essaie plusieurs formats possibles. */
+    const projRaw  = r.Projet;
+    const assRaw   = r.Assigne;
+
+    let projets  = [];
+    let assignes = [];
+
+    /* Cas 1 : tableau de strings (labels déjà résolus) */
+    if (Array.isArray(projRaw) && projRaw.length && typeof projRaw[0] === "string" && projRaw[0] !== "L") {
+      projets = projRaw.filter(Boolean);
+    }
+    /* Cas 2 : format interne Grist ["L", id1, id2] — on affiche les IDs en attendant mieux */
+    else if (Array.isArray(projRaw) && projRaw[0] === "L") {
+      projets = projRaw.slice(1).map(String);
+    }
+    /* Cas 3 : string directe (déjà label) */
+    else if (typeof projRaw === "string" && projRaw) {
+      projets = projRaw.split(",").map(s=>s.trim()).filter(Boolean);
+    }
+
+    if (Array.isArray(assRaw) && assRaw.length && typeof assRaw[0] === "string" && assRaw[0] !== "L") {
+      assignes = assRaw.filter(Boolean);
+    } else if (Array.isArray(assRaw) && assRaw[0] === "L") {
+      assignes = assRaw.slice(1).map(String);
+    } else if (typeof assRaw === "string" && assRaw) {
+      assignes = assRaw.split(",").map(s=>s.trim()).filter(Boolean);
+    }
+
+    return { ...r, _projets: projets, _assignes: assignes };
+  });
+
+  populateFilters();
+  renderBoard();
+});
+
+grist.onRecord(function(record, mappings) {
+  const mapped = grist.mapColumnNames(record, mappings) || record;
+  selectedId = mapped.id;
+  renderBoard();
+});
+</script>
+</body>
+</html>
